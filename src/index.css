@@ -105,9 +105,9 @@ button {
       transparent 39px,
       rgba(32, 33, 29, 0.07) 40px
     );
-  /* Keep one-finger page/waveform panning. Two-finger zoom is captured by
-     the non-passive gesture handlers in WaveformEditor. */
-  touch-action: pan-x pan-y;
+  /* Vertical gestures still scroll the page. Horizontal panning and
+     two-finger zoom are implemented by WaveformEditor. */
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
 }

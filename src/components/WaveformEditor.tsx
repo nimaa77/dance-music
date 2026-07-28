@@ -38,8 +38,25 @@ type WaveformEditorProps = {
 type PinchState = {
   distance: number
   zoom: number
-  midpointX: number
   midpointTime: number
+}
+
+type TouchPanState = {
+  clientX: number
+  clientY: number
+  scrollLeft: number
+}
+
+type NativeGestureState = {
+  initialScale: number
+  midpoint: number
+  midpointTime: number
+  zoom: number
+}
+
+type NativeGestureEvent = Event & {
+  clientX?: number
+  scale?: number
 }
 
 function renderEnergyWaveform(
@@ -124,6 +141,8 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
     const waveSurferRef = useRef<WaveSurfer | null>(null)
     const regionRef = useRef<Region | null>(null)
     const pinchRef = useRef<PinchState | null>(null)
+    const touchPanRef = useRef<TouchPanState | null>(null)
+    const nativeGestureRef = useRef<NativeGestureState | null>(null)
     const zoomRef = useRef(1)
     const durationRef = useRef(0)
     const disabledRef = useRef(disabled)
@@ -321,6 +340,28 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
     useEffect(() => {
       const target = gestureRef.current
       if (!target) return
+      let pointerInside = false
+
+      const isInsideWaveform = (event: Event) => {
+        if (event.composedPath().includes(target)) return true
+        if (!('clientX' in event) || !('clientY' in event)) return false
+        const rect = target.getBoundingClientRect()
+        const clientX = Number(event.clientX)
+        const clientY = Number(event.clientY)
+        return (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        )
+      }
+
+      const startedOnRegion = (event: TouchEvent) =>
+        event.composedPath().some((node) => {
+          if (!(node instanceof HTMLElement)) return false
+          const part = node.getAttribute('part')
+          return part?.includes('region') ?? false
+        })
 
       const distanceBetween = (touches: TouchList) =>
         Math.hypot(
@@ -333,9 +374,36 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         return (touches[0].clientX + touches[1].clientX) / 2 - rect.left
       }
 
-      const startPinch = (event: TouchEvent) => {
-        if (event.touches.length === 2) event.preventDefault()
+      const zoomAroundPoint = (
+        nextZoom: number,
+        midpoint: number,
+        midpointTime: number,
+      ) => {
         const waveSurfer = waveSurferRef.current
+        if (!waveSurfer) return
+        waveSurfer.zoom(nextZoom)
+        waveSurfer.setScroll(
+          Math.max(0, midpointTime * nextZoom - midpoint),
+        )
+      }
+
+      const startTouchGesture = (event: TouchEvent) => {
+        const waveSurfer = waveSurferRef.current
+        if (
+          event.touches.length === 1 &&
+          waveSurfer &&
+          !disabledRef.current &&
+          !startedOnRegion(event)
+        ) {
+          touchPanRef.current = {
+            clientX: event.touches[0].clientX,
+            clientY: event.touches[0].clientY,
+            scrollLeft: waveSurfer.getScroll(),
+          }
+          return
+        }
+
+        touchPanRef.current = null
         if (
           event.touches.length !== 2 ||
           !waveSurfer ||
@@ -344,18 +412,35 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         ) {
           return
         }
+        event.preventDefault()
         const midpoint = midpointX(event.touches)
         const zoom = zoomRef.current
         pinchRef.current = {
           distance: distanceBetween(event.touches),
           zoom,
-          midpointX: midpoint,
           midpointTime: (waveSurfer.getScroll() + midpoint) / zoom,
         }
       }
 
-      const movePinch = (event: TouchEvent) => {
+      const moveTouchGesture = (event: TouchEvent) => {
         const waveSurfer = waveSurferRef.current
+
+        if (
+          event.touches.length === 1 &&
+          waveSurfer &&
+          touchPanRef.current &&
+          !disabledRef.current
+        ) {
+          const pan = touchPanRef.current
+          const deltaX = event.touches[0].clientX - pan.clientX
+          const deltaY = event.touches[0].clientY - pan.clientY
+          if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            event.preventDefault()
+            waveSurfer.setScroll(Math.max(0, pan.scrollLeft - deltaX))
+          }
+          return
+        }
+
         const pinch = pinchRef.current
         if (
           event.touches.length !== 2 ||
@@ -374,32 +459,19 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         )
         waveSurfer.zoom(nextZoom)
         const currentMidpoint = midpointX(event.touches)
-        waveSurfer.setScroll(
-          Math.max(0, pinch.midpointTime * nextZoom - currentMidpoint),
-        )
+        zoomAroundPoint(nextZoom, currentMidpoint, pinch.midpointTime)
       }
 
-      const endPinch = () => {
-        pinchRef.current = null
-      }
-
-      const zoomAroundPoint = (
-        nextZoom: number,
-        midpoint: number,
-        midpointTime: number,
-      ) => {
-        const waveSurfer = waveSurferRef.current
-        if (!waveSurfer) return
-        waveSurfer.zoom(nextZoom)
-        waveSurfer.setScroll(
-          Math.max(0, midpointTime * nextZoom - midpoint),
-        )
+      const endTouchGesture = (event: TouchEvent) => {
+        if (event.touches.length < 2) pinchRef.current = null
+        if (event.touches.length === 0) touchPanRef.current = null
       }
 
       const handleTrackpadZoom = (event: WheelEvent) => {
         const waveSurfer = waveSurferRef.current
         if (
           !event.ctrlKey ||
+          (!pointerInside && !isInsideWaveform(event)) ||
           !waveSurfer ||
           disabledRef.current ||
           durationRef.current <= 0
@@ -436,32 +508,111 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         zoomAroundPoint(nextZoom, midpoint, midpointTime)
       }
 
-      const preventSafariPageZoom = (event: Event) => {
+      const startNativeGesture = (rawEvent: Event) => {
+        const event = rawEvent as NativeGestureEvent
+        const waveSurfer = waveSurferRef.current
+        if (
+          !isInsideWaveform(event) ||
+          !waveSurfer ||
+          disabledRef.current ||
+          durationRef.current <= 0
+        ) {
+          return
+        }
+
         event.preventDefault()
+        event.stopPropagation()
+        const rect = target.getBoundingClientRect()
+        const midpoint =
+          typeof event.clientX === 'number'
+            ? Math.max(0, Math.min(rect.width, event.clientX - rect.left))
+            : rect.width / 2
+        const zoom = zoomRef.current
+        nativeGestureRef.current = {
+          initialScale: event.scale || 1,
+          midpoint,
+          midpointTime: (waveSurfer.getScroll() + midpoint) / zoom,
+          zoom,
+        }
+        pinchRef.current = null
       }
 
-      target.addEventListener('wheel', handleTrackpadZoom, {
+      const changeNativeGesture = (rawEvent: Event) => {
+        const event = rawEvent as NativeGestureEvent
+        const gesture = nativeGestureRef.current
+        const waveSurfer = waveSurferRef.current
+        if (!gesture || !waveSurfer) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        const width = waveSurfer.getWidth() || target.clientWidth || 1
+        const scale = (event.scale || 1) / gesture.initialScale
+        const nextZoom = clampZoom(
+          gesture.zoom * scale,
+          width,
+          durationRef.current,
+        )
+        zoomAroundPoint(
+          nextZoom,
+          gesture.midpoint,
+          gesture.midpointTime,
+        )
+      }
+
+      const endNativeGesture = (event: Event) => {
+        if (!nativeGestureRef.current) return
+        event.preventDefault()
+        event.stopPropagation()
+        nativeGestureRef.current = null
+      }
+
+      const markPointerInside = () => {
+        pointerInside = true
+      }
+
+      const markPointerOutside = () => {
+        pointerInside = false
+      }
+
+      document.addEventListener('wheel', handleTrackpadZoom, {
+        passive: false,
+        capture: true,
+      })
+      target.addEventListener('pointerenter', markPointerInside)
+      target.addEventListener('pointerleave', markPointerOutside)
+      target.addEventListener('touchstart', startTouchGesture, {
         passive: false,
       })
-      target.addEventListener('touchstart', startPinch, { passive: false })
-      target.addEventListener('touchmove', movePinch, { passive: false })
-      target.addEventListener('touchend', endPinch, { passive: true })
-      target.addEventListener('touchcancel', endPinch, { passive: true })
-      target.addEventListener('gesturestart', preventSafariPageZoom)
-      target.addEventListener('gesturechange', preventSafariPageZoom)
-      target.addEventListener('gestureend', preventSafariPageZoom)
+      target.addEventListener('touchmove', moveTouchGesture, {
+        passive: false,
+      })
+      target.addEventListener('touchend', endTouchGesture, {
+        passive: true,
+      })
+      target.addEventListener('touchcancel', endTouchGesture, {
+        passive: true,
+      })
+      document.addEventListener('gesturestart', startNativeGesture, true)
+      document.addEventListener('gesturechange', changeNativeGesture, true)
+      document.addEventListener('gestureend', endNativeGesture, true)
 
       return () => {
-        target.removeEventListener('wheel', handleTrackpadZoom)
-        target.removeEventListener('touchstart', startPinch)
-        target.removeEventListener('touchmove', movePinch)
-        target.removeEventListener('touchend', endPinch)
-        target.removeEventListener('touchcancel', endPinch)
-        target.removeEventListener('gesturestart', preventSafariPageZoom)
-        target.removeEventListener('gesturechange', preventSafariPageZoom)
-        target.removeEventListener('gestureend', preventSafariPageZoom)
+        document.removeEventListener('wheel', handleTrackpadZoom, true)
+        target.removeEventListener('pointerenter', markPointerInside)
+        target.removeEventListener('pointerleave', markPointerOutside)
+        target.removeEventListener('touchstart', startTouchGesture)
+        target.removeEventListener('touchmove', moveTouchGesture)
+        target.removeEventListener('touchend', endTouchGesture)
+        target.removeEventListener('touchcancel', endTouchGesture)
+        document.removeEventListener('gesturestart', startNativeGesture, true)
+        document.removeEventListener(
+          'gesturechange',
+          changeNativeGesture,
+          true,
+        )
+        document.removeEventListener('gestureend', endNativeGesture, true)
       }
-    }, [])
+    }, [file])
 
     if (!file) {
       return (
