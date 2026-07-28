@@ -18,6 +18,7 @@ import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { Card, CardContent } from './components/ui/card'
 import { Slider } from './components/ui/slider'
+import { enablePlaybackAudioSession } from './lib/audio-session'
 import { LoopController, type LoopPhase } from './lib/loop-controller'
 import { formatTime, type Segment } from './lib/time'
 
@@ -29,12 +30,6 @@ type WakeLockHandle = {
 type WakeLockNavigator = Navigator & {
   wakeLock?: {
     request: (type: 'screen') => Promise<WakeLockHandle>
-  }
-}
-
-type AudioSessionNavigator = Navigator & {
-  audioSession?: {
-    type: 'ambient' | 'playback' | 'transient' | 'transient-solo' | 'play-and-record'
   }
 }
 
@@ -70,11 +65,6 @@ function App() {
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
-
-  useEffect(() => {
-    const audioSession = (navigator as AudioSessionNavigator).audioSession
-    if (audioSession) audioSession.type = 'playback'
-  }, [])
 
   useEffect(() => {
     const updateConnection = () => setIsOnline(navigator.onLine)
@@ -182,6 +172,9 @@ function App() {
   const startLoop = async () => {
     if (!loopRef.current || segment.end - segment.start < 1) return
     setError(null)
+    // Configure WebKit while this call is still inside the user's tap. iOS
+    // requires media playback to begin from a user activation.
+    enablePlaybackAudioSession()
     void requestWakeLock()
     await loopRef.current.start({
       ...segment,
