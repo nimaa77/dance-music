@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  type CSSProperties,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -393,10 +394,22 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       )
     }
 
+    const waitingProgress = `${Math.max(
+      0,
+      Math.min(
+        100,
+        durationRef.current > 0 ? (start / durationRef.current) * 100 : 0,
+      ),
+    )}%`
+    const waitingProgressStyle = {
+      '--waiting-progress': waitingProgress,
+    } as CSSProperties
+
     return (
       <>
         <div
           ref={gestureRef}
+          style={waitingProgressStyle}
           className={`waveform-frame ${disabled ? 'is-disabled' : ''} ${
             waiting ? 'is-waiting' : ''
           }`}

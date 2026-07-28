@@ -256,9 +256,23 @@ button {
   transition: opacity 120ms ease;
 }
 
-.waveform-frame.is-waiting ::part(progress),
+.waveform-frame.is-waiting ::part(canvases) {
+  clip-path: polygon(
+    var(--waiting-progress) 0%,
+    100% 0%,
+    100% 100%,
+    var(--waiting-progress) 100%
+  ) !important;
+}
+
+.waveform-frame.is-waiting ::part(progress) {
+  width: var(--waiting-progress) !important;
+  opacity: 1;
+}
+
 .waveform-frame.is-waiting ::part(cursor) {
-  opacity: 0;
+  left: var(--waiting-progress) !important;
+  opacity: 1;
 }
 
 .waveform-empty {
