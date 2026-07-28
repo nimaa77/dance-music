@@ -105,7 +105,11 @@ button {
       transparent 39px,
       rgba(32, 33, 29, 0.07) 40px
     );
+  /* Keep one-finger page/waveform panning. Two-finger zoom is captured by
+     the non-passive gesture handlers in WaveformEditor. */
   touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .waveform-frame.is-disabled {
@@ -147,43 +151,97 @@ button {
 
 .waveform-frame ::part(region-handle) {
   top: -1px !important;
-  width: 20px !important;
+  z-index: 9 !important;
+  width: 44px !important;
   height: calc(100% + 2px) !important;
   border-radius: 0 !important;
-  background: transparent;
+  border: 0 !important;
+  cursor: ew-resize !important;
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .waveform-frame ::part(region-handle-left) {
-  border-left: 4px solid var(--start-marker) !important;
+  left: -22px !important;
+  background: linear-gradient(
+    to right,
+    transparent 20px,
+    var(--start-marker) 20px,
+    var(--start-marker) 24px,
+    transparent 24px
+  ) !important;
 }
 
 .waveform-frame ::part(region-handle-right) {
-  border-right: 4px solid var(--end-marker) !important;
+  right: -22px !important;
+  background: linear-gradient(
+    to right,
+    transparent 20px,
+    var(--end-marker) 20px,
+    var(--end-marker) 24px,
+    transparent 24px
+  ) !important;
 }
 
-.waveform-frame ::part(region-handle-left)::before,
-.waveform-frame ::part(region-handle-right)::before {
+.waveform-frame ::part(region-handle-label) {
   position: absolute;
-  top: -1.9rem;
-  padding: 0.2rem 0.42rem;
-  border-radius: 0.4rem;
+  top: 0.45rem;
+  display: grid;
+  box-sizing: border-box;
+  height: 1.35rem;
+  min-width: 3.15rem;
+  place-items: center;
+  padding: 0 0.45rem;
+  border-radius: 0.5rem;
   color: white;
-  font-size: 0.58rem;
+  font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   line-height: 1;
+  text-align: center;
+  box-shadow: 0 3px 10px rgba(32, 33, 29, 0.2);
+  pointer-events: none;
 }
 
-.waveform-frame ::part(region-handle-left)::before {
-  left: -4px;
-  content: "START";
+.waveform-frame ::part(region-handle-label-start) {
+  left: 22px;
+  transform: translateX(-0.35rem);
   background: var(--start-marker);
 }
 
-.waveform-frame ::part(region-handle-right)::before {
-  right: -4px;
-  content: "END";
+.waveform-frame ::part(region-handle-label-end) {
+  right: 22px;
+  transform: translateX(0.35rem);
+  background: var(--end-marker);
+}
+
+.waveform-frame ::part(region-handle-grip) {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  box-sizing: border-box;
+  width: 30px;
+  height: 38px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid white;
+  border-radius: 999px;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 3px 12px rgba(32, 33, 29, 0.26);
+  pointer-events: none;
+}
+
+.waveform-frame ::part(region-handle-grip-start) {
+  left: calc(50% + 10px);
+  background: var(--start-marker);
+}
+
+.waveform-frame ::part(region-handle-grip-end) {
+  left: calc(50% - 10px);
   background: var(--end-marker);
 }
 

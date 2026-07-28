@@ -40,6 +40,41 @@ type PinchState = {
   midpointTime: number
 }
 
+function decorateRegionHandle(
+  handle: HTMLElement | null | undefined,
+  side: 'start' | 'end',
+): void {
+  if (!handle) return
+
+  const isStart = side === 'start'
+  handle.setAttribute(
+    'aria-label',
+    isStart ? 'Adjust loop start' : 'Adjust loop end',
+  )
+  handle.setAttribute(
+    'title',
+    isStart ? 'Drag to adjust loop start' : 'Drag to adjust loop end',
+  )
+
+  const label = document.createElement('span')
+  label.setAttribute(
+    'part',
+    `region-handle-label region-handle-label-${side}`,
+  )
+  label.setAttribute('aria-hidden', 'true')
+  label.textContent = isStart ? 'START' : 'END'
+
+  const grip = document.createElement('span')
+  grip.setAttribute(
+    'part',
+    `region-handle-grip region-handle-grip-${side}`,
+  )
+  grip.setAttribute('aria-hidden', 'true')
+  grip.textContent = isStart ? '◀' : '▶'
+
+  handle.append(label, grip)
+}
+
 export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
   function WaveformEditor(
     {
@@ -175,6 +210,14 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
             minLength: Math.min(1, duration),
             color: 'rgba(217, 255, 104, 0.24)',
           })
+          const startHandle = region.element?.querySelector<HTMLElement>(
+            '[part~="region-handle-left"]',
+          )
+          const endHandle = region.element?.querySelector<HTMLElement>(
+            '[part~="region-handle-right"]',
+          )
+          decorateRegionHandle(startHandle, 'start')
+          decorateRegionHandle(endHandle, 'end')
           regionRef.current = region
           setLoading(false)
           callbacksRef.current.onReady(duration, initialSegment)
@@ -236,6 +279,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       }
 
       const startPinch = (event: TouchEvent) => {
+        if (event.touches.length === 2) event.preventDefault()
         const waveSurfer = waveSurferRef.current
         if (
           event.touches.length !== 2 ||
@@ -284,16 +328,26 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         pinchRef.current = null
       }
 
-      target.addEventListener('touchstart', startPinch, { passive: true })
+      const preventSafariPageZoom = (event: Event) => {
+        event.preventDefault()
+      }
+
+      target.addEventListener('touchstart', startPinch, { passive: false })
       target.addEventListener('touchmove', movePinch, { passive: false })
       target.addEventListener('touchend', endPinch, { passive: true })
       target.addEventListener('touchcancel', endPinch, { passive: true })
+      target.addEventListener('gesturestart', preventSafariPageZoom)
+      target.addEventListener('gesturechange', preventSafariPageZoom)
+      target.addEventListener('gestureend', preventSafariPageZoom)
 
       return () => {
         target.removeEventListener('touchstart', startPinch)
         target.removeEventListener('touchmove', movePinch)
         target.removeEventListener('touchend', endPinch)
         target.removeEventListener('touchcancel', endPinch)
+        target.removeEventListener('gesturestart', preventSafariPageZoom)
+        target.removeEventListener('gesturechange', preventSafariPageZoom)
+        target.removeEventListener('gestureend', preventSafariPageZoom)
       }
     }, [])
 
