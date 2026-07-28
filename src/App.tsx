@@ -32,6 +32,12 @@ type WakeLockNavigator = Navigator & {
   }
 }
 
+type AudioSessionNavigator = Navigator & {
+  audioSession?: {
+    type: 'ambient' | 'playback' | 'transient' | 'transient-solo' | 'play-and-record'
+  }
+}
+
 const DEFAULT_SEGMENT: Segment = { start: 0, end: 0 }
 
 function App() {
@@ -64,6 +70,11 @@ function App() {
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
+
+  useEffect(() => {
+    const audioSession = (navigator as AudioSessionNavigator).audioSession
+    if (audioSession) audioSession.type = 'playback'
+  }, [])
 
   useEffect(() => {
     const updateConnection = () => setIsOnline(navigator.onLine)
@@ -149,6 +160,8 @@ function App() {
       },
       play: () => waveformRef.current?.play() ?? Promise.reject(new Error('Player unavailable')),
       pause: () => waveformRef.current?.pause(),
+      setMuted: (muted: boolean) => waveformRef.current?.setMuted(muted),
+      setLoop: (loop: boolean) => waveformRef.current?.setLoop(loop),
     }
 
     loopRef.current = new LoopController(adapter, {
@@ -174,6 +187,11 @@ function App() {
       ...segment,
       delaySeconds,
     })
+  }
+
+  const handleTimeChange = (time: number) => {
+    setCurrentTime(time)
+    loopRef.current?.handleTimeUpdate(time)
   }
 
   const isLooping = phase === 'playing' || phase === 'waiting'
@@ -258,7 +276,7 @@ function App() {
                 end={segment.end}
                 onReady={handleReady}
                 onRegionChange={setSegment}
-                onTimeChange={setCurrentTime}
+                onTimeChange={handleTimeChange}
                 onError={handleWaveformError}
               />
             </div>

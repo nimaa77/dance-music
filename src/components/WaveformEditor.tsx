@@ -18,6 +18,8 @@ export type WaveformHandle = {
   pause: () => void
   setTime: (time: number) => void
   getCurrentTime: () => number
+  setMuted: (muted: boolean) => void
+  setLoop: (loop: boolean) => void
 }
 
 type WaveformEditorProps = {
@@ -111,6 +113,14 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         pause: () => waveSurferRef.current?.pause(),
         setTime: (time) => waveSurferRef.current?.setTime(time),
         getCurrentTime: () => waveSurferRef.current?.getCurrentTime() ?? 0,
+        setMuted: (muted) => {
+          const waveSurfer = waveSurferRef.current
+          if (waveSurfer) waveSurfer.getMediaElement().muted = muted
+        },
+        setLoop: (loop) => {
+          const waveSurfer = waveSurferRef.current
+          if (waveSurfer) waveSurfer.getMediaElement().loop = loop
+        },
       }),
       [],
     )
