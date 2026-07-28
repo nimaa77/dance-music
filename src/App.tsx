@@ -45,7 +45,7 @@ function App() {
   const [file, setFile] = useState<File | null>(null)
   const [duration, setDuration] = useState(0)
   const [segment, setSegment] = useState<Segment>(DEFAULT_SEGMENT)
-  const [delaySeconds, setDelaySeconds] = useState(5)
+  const [delaySeconds, setDelaySeconds] = useState(2)
   const [phase, setPhase] = useState<LoopPhase>('empty')
   const [currentTime, setCurrentTime] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -150,8 +150,9 @@ function App() {
       },
       play: () => waveformRef.current?.play() ?? Promise.reject(new Error('Player unavailable')),
       pause: () => waveformRef.current?.pause(),
-      setMuted: (muted: boolean) => waveformRef.current?.setMuted(muted),
-      setLoop: (loop: boolean) => waveformRef.current?.setLoop(loop),
+      startKeepAlive: () =>
+        waveformRef.current?.startKeepAlive() ?? Promise.resolve(),
+      stopKeepAlive: () => waveformRef.current?.stopKeepAlive(),
     }
 
     loopRef.current = new LoopController(adapter, {
@@ -185,6 +186,10 @@ function App() {
   const handleTimeChange = (time: number) => {
     setCurrentTime(time)
     loopRef.current?.handleTimeUpdate(time)
+  }
+
+  const handleWaitClockTick = () => {
+    loopRef.current?.handleWaitClockTick()
   }
 
   const isLooping = phase === 'playing' || phase === 'waiting'
@@ -265,12 +270,12 @@ function App() {
                 ref={waveformRef}
                 file={file}
                 disabled={isLooping}
-                waiting={phase === 'waiting'}
                 start={segment.start}
                 end={segment.end}
                 onReady={handleReady}
                 onRegionChange={setSegment}
                 onTimeChange={handleTimeChange}
+                onWaitClockTick={handleWaitClockTick}
                 onError={handleWaveformError}
               />
             </div>

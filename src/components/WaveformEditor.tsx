@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  type CSSProperties,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -20,19 +19,19 @@ export type WaveformHandle = {
   pause: () => void
   setTime: (time: number) => void
   getCurrentTime: () => number
-  setMuted: (muted: boolean) => void
-  setLoop: (loop: boolean) => void
+  startKeepAlive: () => Promise<void>
+  stopKeepAlive: () => void
 }
 
 type WaveformEditorProps = {
   file: File | null
   disabled: boolean
-  waiting: boolean
   start: number
   end: number
   onReady: (duration: number, initialSegment: Segment) => void
   onRegionChange: (segment: Segment) => void
   onTimeChange: (time: number) => void
+  onWaitClockTick: () => void
   onError: (message: string) => void
 }
 
@@ -109,18 +108,19 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
     {
       file,
       disabled,
-      waiting,
       start,
       end,
       onReady,
       onRegionChange,
       onTimeChange,
+      onWaitClockTick,
       onError,
     },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null)
     const gestureRef = useRef<HTMLDivElement>(null)
+    const keepAliveRef = useRef<HTMLAudioElement>(null)
     const waveSurferRef = useRef<WaveSurfer | null>(null)
     const regionRef = useRef<Region | null>(null)
     const pinchRef = useRef<PinchState | null>(null)
@@ -131,6 +131,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       onReady,
       onRegionChange,
       onTimeChange,
+      onWaitClockTick,
       onError,
     })
     const [loading, setLoading] = useState(false)
@@ -152,9 +153,16 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         onReady,
         onRegionChange,
         onTimeChange,
+        onWaitClockTick,
         onError,
       }
-    }, [onError, onReady, onRegionChange, onTimeChange])
+    }, [
+      onError,
+      onReady,
+      onRegionChange,
+      onTimeChange,
+      onWaitClockTick,
+    ])
 
     useEffect(() => {
       const region = regionRef.current
@@ -178,13 +186,22 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         pause: () => waveSurferRef.current?.pause(),
         setTime: (time) => waveSurferRef.current?.setTime(time),
         getCurrentTime: () => waveSurferRef.current?.getCurrentTime() ?? 0,
-        setMuted: (muted) => {
+        startKeepAlive: async () => {
           const waveSurfer = waveSurferRef.current
-          if (waveSurfer) waveSurfer.getMediaElement().muted = muted
+          const keepAlive = keepAliveRef.current
+          if (!waveSurfer || !keepAlive) return
+          if (!keepAlive.src) {
+            const media = waveSurfer.getMediaElement()
+            keepAlive.src = media.currentSrc || media.src
+          }
+          keepAlive.currentTime = 0
+          await keepAlive.play()
         },
-        setLoop: (loop) => {
-          const waveSurfer = waveSurferRef.current
-          if (waveSurfer) waveSurfer.getMediaElement().loop = loop
+        stopKeepAlive: () => {
+          const keepAlive = keepAliveRef.current
+          if (!keepAlive) return
+          keepAlive.pause()
+          keepAlive.currentTime = 0
         },
       }),
       [],
@@ -194,6 +211,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       if (!file || !containerRef.current) return
 
       setLoading(true)
+      const keepAlive = keepAliveRef.current
       const regions = RegionsPlugin.create()
       const timeline = TimelinePlugin.create({
         height: 22,
@@ -246,6 +264,11 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
           decorateRegionHandle(startHandle, 'start')
           decorateRegionHandle(endHandle, 'end')
           regionRef.current = region
+          if (keepAlive) {
+            const media = waveSurfer.getMediaElement()
+            keepAlive.src = media.currentSrc || media.src
+            keepAlive.load()
+          }
           setLoading(false)
           callbacksRef.current.onReady(duration, initialSegment)
         }),
@@ -284,6 +307,11 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
 
       return () => {
         unsubscribers.forEach((unsubscribe) => unsubscribe())
+        if (keepAlive) {
+          keepAlive.pause()
+          keepAlive.removeAttribute('src')
+          keepAlive.load()
+        }
         regionRef.current = null
         waveSurferRef.current = null
         waveSurfer.destroy()
@@ -394,25 +422,11 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       )
     }
 
-    const waitingProgress = `${Math.max(
-      0,
-      Math.min(
-        100,
-        durationRef.current > 0 ? (start / durationRef.current) * 100 : 0,
-      ),
-    )}%`
-    const waitingProgressStyle = {
-      '--waiting-progress': waitingProgress,
-    } as CSSProperties
-
     return (
       <>
         <div
           ref={gestureRef}
-          style={waitingProgressStyle}
-          className={`waveform-frame ${disabled ? 'is-disabled' : ''} ${
-            waiting ? 'is-waiting' : ''
-          }`}
+          className={`waveform-frame ${disabled ? 'is-disabled' : ''}`}
         >
           {loading && (
             <div className="waveform-loading" aria-live="polite">
@@ -421,6 +435,15 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
             </div>
           )}
           <div ref={containerRef} className="waveform-interaction" />
+          <audio
+            ref={keepAliveRef}
+            aria-hidden="true"
+            muted
+            loop
+            playsInline
+            preload="auto"
+            onTimeUpdate={() => callbacksRef.current.onWaitClockTick()}
+          />
         </div>
         <div className="waveform-help">
           <span>

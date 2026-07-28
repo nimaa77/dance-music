@@ -16,8 +16,8 @@ type AudioAdapter = {
   currentTime: number
   play: () => Promise<void>
   pause: () => void
-  setMuted: (muted: boolean) => void
-  setLoop: (loop: boolean) => void
+  startKeepAlive: () => Promise<void>
+  stopKeepAlive: () => void
 }
 
 type LoopCallbacks = {
@@ -67,8 +67,8 @@ export class LoopController {
     this.cancelScheduledWork()
     this.generation += 1
     this.active = true
-    this.audio.setLoop(false)
-    this.audio.setMuted(false)
+    this.audio.stopKeepAlive()
+    void this.audio.startKeepAlive().catch(() => undefined)
     this.settings = {
       start: Math.max(0, settings.start),
       end: Math.max(settings.start + 1, settings.end),
@@ -82,8 +82,7 @@ export class LoopController {
     this.active = false
     this.cancelScheduledWork()
     this.waitingUntil = 0
-    this.audio.setLoop(false)
-    this.audio.setMuted(false)
+    this.audio.stopKeepAlive()
     this.audio.pause()
     if (this.settings) this.audio.currentTime = this.settings.start
     this.phase = 'ready'
@@ -95,8 +94,6 @@ export class LoopController {
 
     this.cancelScheduledWork()
     this.waitingUntil = 0
-    this.audio.setLoop(false)
-    this.audio.setMuted(false)
     this.audio.currentTime = this.settings.start
     this.setPhase('playing')
 
@@ -112,8 +109,7 @@ export class LoopController {
       this.active = false
       this.cancelScheduledWork()
       this.waitingUntil = 0
-      this.audio.setLoop(false)
-      this.audio.setMuted(false)
+      this.audio.stopKeepAlive()
       this.audio.pause()
       this.setPhase('error')
       this.callbacks.onError(error)
@@ -128,7 +124,11 @@ export class LoopController {
       return
     }
 
+  }
+
+  handleWaitClockTick(): void {
     if (
+      this.active &&
       this.phase === 'waiting' &&
       this.waitingUntil > 0 &&
       this.scheduler.now() >= this.waitingUntil
@@ -161,15 +161,11 @@ export class LoopController {
       return
     }
 
-    // Keep a native media stream active while silent. iOS suspends page timers
-    // and animation frames on lock, but lets background media continue.
-    this.audio.setMuted(true)
-    this.audio.setLoop(true)
-    this.audio.currentTime = 0
     this.waitingUntil =
       this.scheduler.now() + this.settings.delaySeconds * 1000
     this.setPhase('waiting')
-    void this.audio.play().catch((error) => this.fail(error, generation))
+    this.audio.pause()
+    this.audio.currentTime = this.settings.start
 
     this.timerId = this.scheduler.setTimer(() => {
       this.timerId = null
@@ -181,18 +177,6 @@ export class LoopController {
         void this.playCycle(generation)
       }
     }, this.settings.delaySeconds * 1000)
-  }
-
-  private fail(error: unknown, generation: number): void {
-    if (generation !== this.generation) return
-    this.active = false
-    this.cancelScheduledWork()
-    this.waitingUntil = 0
-    this.audio.setLoop(false)
-    this.audio.setMuted(false)
-    this.audio.pause()
-    this.setPhase('error')
-    this.callbacks.onError(error)
   }
 
   private setPhase(phase: LoopPhase): void {

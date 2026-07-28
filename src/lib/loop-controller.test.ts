@@ -13,8 +13,8 @@ function createHarness(playImplementation: () => Promise<void> = () => Promise.r
     currentTime: 0,
     play: vi.fn(playImplementation),
     pause: vi.fn(),
-    setMuted: vi.fn(),
-    setLoop: vi.fn(),
+    startKeepAlive: vi.fn(() => Promise.resolve()),
+    stopKeepAlive: vi.fn(),
   }
 
   const controller = new LoopController(
@@ -78,18 +78,19 @@ describe('LoopController', () => {
 
     expect(harness.audio.currentTime).toBe(80)
     expect(harness.audio.play).toHaveBeenCalledTimes(1)
+    expect(harness.audio.startKeepAlive).toHaveBeenCalledTimes(1)
     expect(harness.phases).toEqual(['playing'])
 
     harness.audio.currentTime = 90
     harness.runFrame()
-    expect(harness.audio.setMuted).toHaveBeenLastCalledWith(true)
-    expect(harness.audio.setLoop).toHaveBeenLastCalledWith(true)
+    expect(harness.audio.pause).toHaveBeenCalledTimes(1)
+    expect(harness.audio.currentTime).toBe(80)
     expect(harness.phases.at(-1)).toBe('waiting')
 
     harness.runTimer()
     await Promise.resolve()
     expect(harness.audio.currentTime).toBe(80)
-    expect(harness.audio.play).toHaveBeenCalledTimes(3)
+    expect(harness.audio.play).toHaveBeenCalledTimes(2)
     expect(harness.phases.at(-1)).toBe('playing')
   })
 
@@ -113,11 +114,10 @@ describe('LoopController', () => {
     expect(harness.phases.at(-1)).toBe('waiting')
 
     harness.advanceTime(3000)
-    harness.controller.handleTimeUpdate(1)
+    harness.controller.handleWaitClockTick()
     await Promise.resolve()
 
     expect(harness.audio.currentTime).toBe(20)
-    expect(harness.audio.setMuted).toHaveBeenLastCalledWith(false)
     expect(harness.phases.at(-1)).toBe('playing')
   })
 
@@ -130,6 +130,7 @@ describe('LoopController', () => {
     expect(harness.pendingFrames()).toBe(0)
     expect(harness.pendingTimers()).toBe(0)
     expect(harness.audio.currentTime).toBe(25)
+    expect(harness.audio.stopKeepAlive).toHaveBeenCalledTimes(2)
     expect(harness.phases.at(-1)).toBe('ready')
   })
 
@@ -141,5 +142,6 @@ describe('LoopController', () => {
     expect(harness.phases).toEqual(['playing', 'error'])
     expect(harness.errors).toEqual([failure])
     expect(harness.pendingFrames()).toBe(0)
+    expect(harness.audio.stopKeepAlive).toHaveBeenCalledTimes(2)
   })
 })
