@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
+  Download,
   FileAudio,
   Music2,
   Pause,
@@ -12,6 +13,8 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
+import type { PWAInstallElement } from '@khmyznikov/pwa-install'
+import '@khmyznikov/pwa-install'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { WaveformEditor, type WaveformHandle } from './components/WaveformEditor'
 import { Badge } from './components/ui/badge'
@@ -20,6 +23,16 @@ import { Card, CardContent } from './components/ui/card'
 import { Slider } from './components/ui/slider'
 import { enablePlaybackAudioSession } from './lib/audio-session'
 import { LoopController, type LoopPhase } from './lib/loop-controller'
+import {
+  openPwaInstallPrompt,
+  shouldShowPwaInstall,
+} from './lib/pwa-install'
+import {
+  SHARE_ERROR_QUERY_PARAM,
+  SHARED_AUDIO_QUERY_PARAM,
+  consumeSharedAudio,
+  getShareErrorMessage,
+} from './lib/shared-audio'
 import { formatTime, type Segment } from './lib/time'
 
 type WakeLockHandle = {
@@ -37,10 +50,12 @@ const DEFAULT_SEGMENT: Segment = { start: 0, end: 0 }
 
 function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const installRef = useRef<PWAInstallElement>(null)
   const waveformRef = useRef<WaveformHandle>(null)
   const loopRef = useRef<LoopController | null>(null)
   const wakeLockRef = useRef<WakeLockHandle | null>(null)
   const phaseRef = useRef<LoopPhase>('empty')
+  const handledShareRef = useRef(false)
 
   const [file, setFile] = useState<File | null>(null)
   const [duration, setDuration] = useState(0)
@@ -50,6 +65,7 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+  const [canInstall, setCanInstall] = useState(false)
 
   const {
     offlineReady: [offlineReady, setOfflineReady],
@@ -73,6 +89,46 @@ function App() {
     return () => {
       window.removeEventListener('online', updateConnection)
       window.removeEventListener('offline', updateConnection)
+    }
+  }, [])
+
+  useEffect(() => {
+    const installElement = installRef.current
+    if (!installElement) return
+
+    const syncAvailability = () => {
+      setCanInstall(shouldShowPwaInstall(installElement))
+    }
+    const handleInstalled = () => setCanInstall(false)
+    const standaloneQuery = window.matchMedia('(display-mode: standalone)')
+
+    installElement.addEventListener(
+      'pwa-install-available-event',
+      syncAvailability,
+    )
+    installElement.addEventListener(
+      'pwa-install-success-event',
+      handleInstalled,
+    )
+    standaloneQuery.addEventListener('change', syncAvailability)
+
+    void customElements
+      .whenDefined('pwa-install')
+      .then(() => installElement.updateComplete)
+      .then(syncAvailability)
+    const availabilityTimer = window.setTimeout(syncAvailability, 750)
+
+    return () => {
+      window.clearTimeout(availabilityTimer)
+      installElement.removeEventListener(
+        'pwa-install-available-event',
+        syncAvailability,
+      )
+      installElement.removeEventListener(
+        'pwa-install-success-event',
+        handleInstalled,
+      )
+      standaloneQuery.removeEventListener('change', syncAvailability)
     }
   }, [])
 
@@ -122,16 +178,58 @@ function App() {
     [releaseWakeLock],
   )
 
-  const handleFile = (nextFile?: File) => {
-    if (!nextFile) return
-    stopLoop(false)
-    setError(null)
-    setDuration(0)
-    setSegment(DEFAULT_SEGMENT)
-    setCurrentTime(0)
-    setPhase('loading')
-    setFile(nextFile)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+  const handleFile = useCallback(
+    (nextFile?: File) => {
+      if (!nextFile) return
+      stopLoop(false)
+      setError(null)
+      setDuration(0)
+      setSegment(DEFAULT_SEGMENT)
+      setCurrentTime(0)
+      setPhase('loading')
+      setFile(nextFile)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    },
+    [stopLoop],
+  )
+
+  useEffect(() => {
+    if (handledShareRef.current) return
+
+    const url = new URL(window.location.href)
+    const sharedAudio = url.searchParams.get(SHARED_AUDIO_QUERY_PARAM)
+    const shareError = url.searchParams.get(SHARE_ERROR_QUERY_PARAM)
+    if (!sharedAudio && !shareError) return
+
+    handledShareRef.current = true
+    url.searchParams.delete(SHARED_AUDIO_QUERY_PARAM)
+    url.searchParams.delete(SHARE_ERROR_QUERY_PARAM)
+    window.history.replaceState(
+      {},
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    )
+
+    if (shareError) {
+      setError(getShareErrorMessage(shareError))
+      return
+    }
+
+    void consumeSharedAudio()
+      .then((sharedFile) => {
+        if (!sharedFile) {
+          setError(getShareErrorMessage('missing'))
+          return
+        }
+        handleFile(sharedFile)
+      })
+      .catch(() => setError(getShareErrorMessage('storage')))
+  }, [handleFile])
+
+  const promptInstall = () => {
+    const installElement = installRef.current
+    if (!installElement) return
+    openPwaInstallPrompt(installElement)
   }
 
   const handleReady = (nextDuration: number, initialSegment: Segment) => {
@@ -224,6 +322,17 @@ function App() {
               <WifiOff size={13} />
               Offline
             </Badge>
+          ) : canInstall ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={promptInstall}
+            >
+              <Download size={15} />
+              Install
+            </Button>
           ) : offlineReady ? (
             <Badge variant="outline" className="shrink-0 gap-1.5">
               <Check size={13} />
@@ -261,6 +370,7 @@ function App() {
                 data-testid="track-input"
                 className="sr-only"
                 type="file"
+                accept="audio/*,.aac,.flac,.m4a,.mp3,.oga,.ogg,.opus,.wav,.webm"
                 onChange={(event) => handleFile(event.target.files?.[0])}
               />
             </div>
@@ -393,6 +503,15 @@ function App() {
             Dismiss offline ready message
           </button>
         )}
+        <pwa-install
+          ref={installRef}
+          manual-apple="true"
+          manual-chrome="true"
+          manifest-url="/manifest.webmanifest"
+          install-description="Install Dance Loop for quick access and offline practice."
+          disableScreenshots
+          styles={{ '--tint-color': '#20211d' }}
+        />
       </div>
     </main>
   )
