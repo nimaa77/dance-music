@@ -245,6 +245,13 @@ button {
   background: var(--end-marker);
 }
 
+@media (pointer: fine) {
+  .waveform-frame ::part(region-handle-grip-start),
+  .waveform-frame ::part(region-handle-grip-end) {
+    left: 50%;
+  }
+}
+
 .waveform-frame ::part(cursor) {
   z-index: 7;
   border-radius: 999px;

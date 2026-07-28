@@ -233,7 +233,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         hideScrollbar: true,
         autoScroll: true,
         autoCenter: false,
-        dragToSeek: false,
+        dragToSeek: { debounceTime: 0 },
         plugins: [regions, timeline],
       })
 
@@ -383,10 +383,66 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         pinchRef.current = null
       }
 
+      const zoomAroundPoint = (
+        nextZoom: number,
+        midpoint: number,
+        midpointTime: number,
+      ) => {
+        const waveSurfer = waveSurferRef.current
+        if (!waveSurfer) return
+        waveSurfer.zoom(nextZoom)
+        waveSurfer.setScroll(
+          Math.max(0, midpointTime * nextZoom - midpoint),
+        )
+      }
+
+      const handleTrackpadZoom = (event: WheelEvent) => {
+        const waveSurfer = waveSurferRef.current
+        if (
+          !event.ctrlKey ||
+          !waveSurfer ||
+          disabledRef.current ||
+          durationRef.current <= 0
+        ) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        const rect = target.getBoundingClientRect()
+        const midpoint = Math.max(
+          0,
+          Math.min(rect.width, event.clientX - rect.left),
+        )
+        const currentZoom = zoomRef.current
+        const midpointTime =
+          (waveSurfer.getScroll() + midpoint) / currentZoom
+        const modeScale =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? target.clientHeight
+              : 1
+        const delta = Math.max(
+          -50,
+          Math.min(50, event.deltaY * modeScale),
+        )
+        const width = waveSurfer.getWidth() || target.clientWidth || 1
+        const nextZoom = clampZoom(
+          currentZoom * Math.exp(-delta * 0.012),
+          width,
+          durationRef.current,
+        )
+        zoomAroundPoint(nextZoom, midpoint, midpointTime)
+      }
+
       const preventSafariPageZoom = (event: Event) => {
         event.preventDefault()
       }
 
+      target.addEventListener('wheel', handleTrackpadZoom, {
+        passive: false,
+      })
       target.addEventListener('touchstart', startPinch, { passive: false })
       target.addEventListener('touchmove', movePinch, { passive: false })
       target.addEventListener('touchend', endPinch, { passive: true })
@@ -396,6 +452,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       target.addEventListener('gestureend', preventSafariPageZoom)
 
       return () => {
+        target.removeEventListener('wheel', handleTrackpadZoom)
         target.removeEventListener('touchstart', startPinch)
         target.removeEventListener('touchmove', movePinch)
         target.removeEventListener('touchend', endPinch)
@@ -452,7 +509,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
           </span>
           <span>
             <ScanLine size={13} />
-            Pinch to zoom
+            Pinch / trackpad zoom
           </span>
         </div>
       </>
