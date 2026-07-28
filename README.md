@@ -23,11 +23,14 @@ The production site is written to `dist`.
 
 Create a new application from this repository and use:
 
-- Build pack: **Nixpacks**
-- Is it a static site?: **Enabled**
-- Build command: `npm run build`
-- Publish directory: `dist`
+- Build pack: **Dockerfile**
+- Dockerfile location: `/Dockerfile`
+- Exposed port: `80`
 - Force HTTPS: **Enabled**
+
+No install, build, start, or publish-directory overrides are needed. The
+multi-stage image builds the app with Node 24 and serves the generated files
+with Nginx.
 
 HTTPS is required for the service worker. After the first successful visit, the
 app shell can be opened offline. Music is intentionally selected from the
