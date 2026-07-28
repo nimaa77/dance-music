@@ -265,6 +265,7 @@ function App() {
                 ref={waveformRef}
                 file={file}
                 disabled={isLooping}
+                waiting={phase === 'waiting'}
                 start={segment.start}
                 end={segment.end}
                 onReady={handleReady}

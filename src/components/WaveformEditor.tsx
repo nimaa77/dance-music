@@ -12,6 +12,7 @@ import RegionsPlugin, {
 } from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js'
 import { clampZoom, createInitialSegment, type Segment } from '../lib/time'
+import { createWaveformEnvelope } from '../lib/waveform'
 
 export type WaveformHandle = {
   play: () => Promise<void>
@@ -25,6 +26,7 @@ export type WaveformHandle = {
 type WaveformEditorProps = {
   file: File | null
   disabled: boolean
+  waiting: boolean
   start: number
   end: number
   onReady: (duration: number, initialSegment: Segment) => void
@@ -38,6 +40,32 @@ type PinchState = {
   zoom: number
   midpointX: number
   midpointTime: number
+}
+
+function renderEnergyWaveform(
+  channels: Array<Float32Array | number[]>,
+  context: CanvasRenderingContext2D,
+): void {
+  const { width, height } = context.canvas
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1)
+  const barWidth = 2 * pixelRatio
+  const barGap = 1.5 * pixelRatio
+  const spacing = barWidth + barGap
+  const barCount = Math.max(1, Math.floor(width / spacing))
+  const envelope = createWaveformEnvelope(channels, barCount)
+
+  envelope.forEach((amplitude, index) => {
+    const barHeight = Math.max(
+      2 * pixelRatio,
+      amplitude * height * 0.88,
+    )
+    context.fillRect(
+      index * spacing,
+      (height - barHeight) / 2,
+      barWidth,
+      barHeight,
+    )
+  })
 }
 
 function decorateRegionHandle(
@@ -80,6 +108,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
     {
       file,
       disabled,
+      waiting,
       start,
       end,
       onReady,
@@ -181,10 +210,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         progressColor: '#34362f',
         cursorColor: '#20211d',
         cursorWidth: 2,
-        barWidth: 3,
-        barGap: 2,
-        barRadius: 3,
-        normalize: true,
+        renderFunction: renderEnergyWaveform,
         hideScrollbar: true,
         autoScroll: true,
         autoCenter: false,
@@ -371,7 +397,9 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       <>
         <div
           ref={gestureRef}
-          className={`waveform-frame ${disabled ? 'is-disabled' : ''}`}
+          className={`waveform-frame ${disabled ? 'is-disabled' : ''} ${
+            waiting ? 'is-waiting' : ''
+          }`}
         >
           {loading && (
             <div className="waveform-loading" aria-live="polite">

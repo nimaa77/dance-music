@@ -251,6 +251,16 @@ button {
   box-shadow: 0 0 0 2px rgba(255, 253, 247, 0.8);
 }
 
+.waveform-frame ::part(progress),
+.waveform-frame ::part(cursor) {
+  transition: opacity 120ms ease;
+}
+
+.waveform-frame.is-waiting ::part(progress),
+.waveform-frame.is-waiting ::part(cursor) {
+  opacity: 0;
+}
+
 .waveform-empty {
   display: grid;
   min-height: 170px;
