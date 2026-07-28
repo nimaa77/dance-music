@@ -245,7 +245,6 @@ function App() {
                 data-testid="track-input"
                 className="sr-only"
                 type="file"
-                accept="audio/*"
                 onChange={(event) => handleFile(event.target.files?.[0])}
               />
             </div>
