@@ -17,8 +17,15 @@ as a share target, so iOS users should save the audio and choose it in the app.
 
 ## Local development
 
+Use Node **24.22.1 LTS** (or a newer patched Node 24 release) and npm
+**12.2.1**. `.nvmrc` and `.node-version` select the tested Node release;
+`package.json` and `.npmrc` enforce the supported Node and npm versions.
+
 ```bash
-npm install
+nvm install
+nvm use
+npm install --global npm@12.2.1
+npm ci
 npm run dev
 ```
 
@@ -26,7 +33,9 @@ Run the automated checks and create a production bundle with:
 
 ```bash
 npm test
+npm run lint
 npm run build
+npm audit
 ```
 
 The production site is written to `dist`.
@@ -41,8 +50,14 @@ Create a new application from this repository and use:
 - Force HTTPS: **Enabled**
 
 No install, build, start, or publish-directory overrides are needed. The
-multi-stage image builds the app with Node 24 and serves the generated files
-with Nginx.
+multi-stage image builds the app with Node 24.22.1 and npm 12.2.1, then serves
+the generated files with Nginx 1.30.6. Both base images are pinned to verified
+multi-platform digests. Node is only present in the build stage.
+
+The Node version includes the [October 2026 security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+When upgrading Node, update both version files, the engine minimum, and the
+Docker build image together. Refresh the image digests when adopting base-image
+security updates.
 
 HTTPS is required for the service worker. After the first successful visit, the
 app shell can be opened offline. Music is intentionally selected from the

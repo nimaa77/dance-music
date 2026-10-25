@@ -211,6 +211,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
           if (!waveSurfer || !keepAlive) return
           if (!keepAlive.src) {
             const media = waveSurfer.getMediaElement()
+            if (!media) return
             keepAlive.src = media.currentSrc || media.src
           }
           keepAlive.currentTime = 0
@@ -230,6 +231,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       if (!file || !containerRef.current) return
 
       setLoading(true)
+      let disposed = false
       const keepAlive = keepAliveRef.current
       const regions = RegionsPlugin.create()
       const timeline = TimelinePlugin.create({
@@ -285,8 +287,10 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
           regionRef.current = region
           if (keepAlive) {
             const media = waveSurfer.getMediaElement()
-            keepAlive.src = media.currentSrc || media.src
-            keepAlive.load()
+            if (media) {
+              keepAlive.src = media.currentSrc || media.src
+              keepAlive.load()
+            }
           }
           setLoading(false)
           callbacksRef.current.onReady(duration, initialSegment)
@@ -317,7 +321,12 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
         }),
       ]
 
-      void waveSurfer.loadBlob(file).catch(() => {
+      void waveSurfer.loadBlob(file).catch((error: unknown) => {
+        if (
+          disposed ||
+          (typeof error === 'object' && error !== null &&
+            'name' in error && error.name === 'AbortError')
+        ) return
         setLoading(false)
         callbacksRef.current.onError(
           'This audio file could not be opened. Try an MP3, M4A, or WAV file.',
@@ -325,6 +334,7 @@ export const WaveformEditor = forwardRef<WaveformHandle, WaveformEditorProps>(
       })
 
       return () => {
+        disposed = true
         unsubscribers.forEach((unsubscribe) => unsubscribe())
         if (keepAlive) {
           keepAlive.pause()
