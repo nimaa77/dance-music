@@ -95,11 +95,20 @@ Validation used the checksum-verified Node 24.22.1 binary and npm 12.2.1:
 - Old Node 24.18.0 was rejected with EBADENGINE by the enforced engine constraint.
 - git diff --check: passed.
 
-Container limitation: Docker registry manifests and both multi-platform digests
-were verified. The local Docker/OrbStack API did not respond, including a bounded
-15-second docker version probe; buildx reported endpoint timeouts. The attempted
-container build was cancelled before it could start. A complete image build and
-HTTP health check still require a responsive Docker daemon or Coolify build.
+Container validation completed after the local Docker/OrbStack API recovered:
+
+- Full Docker build using the pinned images: passed on Linux arm64, including
+  clean npm installation, zero audit findings, TypeScript, and app/service-worker builds.
+- Nginx 1.30.6 configuration validation: passed; Node is absent from the runtime image.
+- Running container: /health, /, /manifest.webmanifest, and /sw.js returned HTTP 200.
+  The health JSON and app/PWA contents matched expectations. Health responses use
+  no-store; the manifest and service worker use no-cache.
+- Docker HEALTHCHECK reached healthy. The temporary test container was removed.
+- Coolify deployment 8md7lpg1trshtnmfrsxg3fed for commit
+  f57e1b6b1fa87936891999bc9d114d2d41eb9ff5 finished successfully. Its deployment
+  log confirms the remote image build, successful health check, and completed rolling update.
+- Public https://dance.inima.ir/health, /, /manifest.webmanifest, and /sw.js returned
+  HTTP 200 with the expected health JSON, app document, manifest, and service worker.
 
 Non-blocking upstream notices: the app bundle is over Vite's 500 kB warning
 threshold; vite-plugin-pwa emits an inlineDynamicImports deprecation; a transitive
